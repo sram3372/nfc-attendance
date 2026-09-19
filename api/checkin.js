@@ -72,6 +72,26 @@ function cmac(key, data) {
   return aesEcbEncryptBlock(key, xor(X, lastBlock));
 }
 
+// Derives the one-time-per-tap session key the tag itself used to sign this tap,
+// per NXP's official NTAG 424 DNA SUN spec (application note AN12196).
+function deriveSdmMacSessionKey(masterKey, uidHex, counter) {
+  const uidBytes = Buffer.from(uidHex, 'hex'); // 7 bytes
+  const counterBytes = Buffer.from([counter & 0xff, (counter >> 8) & 0xff, (counter >> 16) & 0xff]);
+  const sv2 = Buffer.concat([
+    Buffer.from([0x3c, 0xc3, 0x00, 0x01, 0x00, 0x80]),
+    uidBytes,
+    counterBytes,
+  ]);
+  return cmac(masterKey, sv2); // 16-byte derived key
+}
+
+// NXP's SDM MAC truncation: take every second byte (odd positions) of the 16-byte CMAC
+function truncateMac(fullMac) {
+  const out = Buffer.alloc(8);
+  for (let i = 0; i < 8; i++) out[i] = fullMac[1 + i * 2];
+  return out;
+}
+
 module.exports = async (req, res) => {
   const { picc_data, cmac: cmacParam, email } = req.query;
 
@@ -80,7 +100,13 @@ module.exports = async (req, res) => {
   const decrypted = decryptPicc(picc_data);
   if (!decrypted) return html(res, 'Verification Failed', 'Could not read tag.', '#d9534f');
 
-  const expected = cmac(TAG_KEY, decrypted.plain).subarray(0, 8).toString('hex').toUpperCase();
+  const sessionKey = deriveSdmMacSessionKey(TAG_KEY, decrypted.uid, decrypted.counter);
+  const uidBytes = Buffer.from(decrypted.uid, 'hex');
+  const counterBytes = Buffer.from([decrypted.counter & 0xff, (decrypted.counter >> 8) & 0xff, (decrypted.counter >> 16) & 0xff]);
+  const macInput = Buffer.concat([uidBytes, counterBytes]);
+  const fullMac = cmac(sessionKey, macInput);
+  const expected = truncateMac(fullMac).toString('hex').toUpperCase();
+
   if (expected !== cmacParam.toUpperCase()) {
     return html(res, 'Fraud Alert', 'This does not match a real tag.', '#d9534f');
   }
