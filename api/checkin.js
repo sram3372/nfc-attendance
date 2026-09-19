@@ -101,9 +101,9 @@ module.exports = async (req, res) => {
   if (!decrypted) return html(res, 'Verification Failed', 'Could not read tag.', '#d9534f');
 
   const sessionKey = deriveSdmMacSessionKey(TAG_KEY, decrypted.uid, decrypted.counter);
-  const uidBytes = Buffer.from(decrypted.uid, 'hex');
-  const counterBytes = Buffer.from([decrypted.counter & 0xff, (decrypted.counter >> 8) & 0xff, (decrypted.counter >> 16) & 0xff]);
-  const macInput = Buffer.concat([uidBytes, counterBytes]);
+  // No SDMEncFileData is mirrored in our URL (only picc_data + cmac), so the
+  // final CMAC is computed over an EMPTY message using the derived session key.
+  const macInput = Buffer.alloc(0);
   const fullMac = cmac(sessionKey, macInput);
   const expected = truncateMac(fullMac).toString('hex').toUpperCase();
 
