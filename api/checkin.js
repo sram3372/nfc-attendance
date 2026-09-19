@@ -108,7 +108,14 @@ module.exports = async (req, res) => {
   const expected = truncateMac(fullMac).toString('hex').toUpperCase();
 
   if (expected !== cmacParam.toUpperCase()) {
-    return html(res, 'Fraud Alert', 'This does not match a real tag.', '#d9534f');
+    return html(res, 'Fraud Alert (DEBUG)',
+      `Decrypted UID: ${decrypted.uid}<br>` +
+      `Decrypted counter: ${decrypted.counter}<br>` +
+      `Decrypted plaintext (hex): ${decrypted.plain.toString('hex').toUpperCase()}<br>` +
+      `Server expected CMAC: ${expected}<br>` +
+      `Tag sent CMAC: ${cmacParam.toUpperCase()}<br>` +
+      `Raw picc_data received: ${picc_data}`,
+      '#d9534f');
   }
 
   const { data: tagRow } = await supabase.from('tags').select('*').eq('uid', decrypted.uid).single();
